@@ -1,0 +1,36 @@
+name: Export OB1 to Google Drive
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # every 6 hours, catches upstream updates
+  workflow_dispatch:         # manual trigger button in GitHub UI
+  push:
+    branches: [main]         # also fires on your own changes
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Sync fork with upstream
+        run: |
+          git clone https://github.com/NateBJones-Projects/OB1.git repo
+          
+      - name: Generate export file
+        run: |
+          cd repo
+          find . -type f \( -name "*.md" -o -name "*.ts" -o -name "*.json" \) \
+            ! -path "*/node_modules/*" \
+            ! -path "*/.git/*" \
+            | sort \
+            | xargs awk 'FNR==1{print "\n\n========== FILE: " FILENAME " ==========\n"} {print}' \
+            > ../ob1-full-export.txt
+          echo "Export complete. Size: $(wc -c < ../ob1-full-export.txt) bytes"
+
+      - name: Upload to Google Drive
+        uses: adityak74/google-drive-upload-git-action@main
+        with:
+          filename: ob1-full-export.txt
+          folderId: ${{ secrets.GDRIVE_FOLDER_ID }}
+          credentials: ${{ secrets.GDRIVE_CREDENTIALS }}
+          overwrite: true
