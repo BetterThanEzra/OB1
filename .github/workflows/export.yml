@@ -25,6 +25,7 @@ jobs:
             | sort \
             | xargs awk 'FNR==1{print "\n\n========== FILE: " FILENAME " ==========\n"} {print}' \
             > ../ob1-full-export.txt
+          echo "Export complete. Size: $(wc -c < ../ob1-full-export.txt) bytes"
 
       - name: Upload as Google Doc
         run: |
@@ -38,7 +39,6 @@ jobs:
           from googleapiclient.discovery import build
           from googleapiclient.http import MediaFileUpload
 
-          # Load credentials
           creds_json = base64.b64decode(os.environ['GDRIVE_CREDENTIALS']).decode('utf-8')
           creds_dict = json.loads(creds_json)
           creds = service_account.Credentials.from_service_account_info(
@@ -49,7 +49,6 @@ jobs:
           drive = build('drive', 'v3', credentials=creds)
           folder_id = os.environ['GDRIVE_FOLDER_ID']
 
-          # Check if doc already exists
           results = drive.files().list(
             q=f"name='OB1 Full Export' and '{folder_id}' in parents and trashed=false",
             fields="files(id, name)",
@@ -61,12 +60,10 @@ jobs:
 
           media = MediaFileUpload(
             'ob1-full-export.txt',
-            mimetype='text/plain',
-            resumable=True
+            mimetype='text/plain'
           )
 
           if files:
-            # Update existing doc
             file_id = files[0]['id']
             drive.files().update(
               fileId=file_id,
@@ -75,7 +72,6 @@ jobs:
             ).execute()
             print(f"Updated existing doc: {file_id}")
           else:
-            # Create new Google Doc
             file_metadata = {
               'name': 'OB1 Full Export',
               'mimeType': 'application/vnd.google-apps.document',
