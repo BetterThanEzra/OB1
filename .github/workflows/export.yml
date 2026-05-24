@@ -27,13 +27,7 @@ jobs:
             > ../ob1-full-export.txt
           echo "Export complete. Size: $(wc -c < ../ob1-full-export.txt) bytes"
 
-      - name: Convert to docx
-        run: |
-          sudo apt-get install -y pandoc -q
-          pandoc ob1-full-export.txt -o ob1-full-export.docx
-          echo "docx size: $(wc -c < ob1-full-export.docx) bytes"
-
-      - name: Upload to Google Drive
+      - name: Write to Google Doc
         run: |
           pip install google-auth google-auth-httplib2 google-api-python-client -q
 
@@ -43,55 +37,58 @@ jobs:
           import base64
           from google.oauth2 import service_account
           from googleapiclient.discovery import build
-          from googleapiclient.http import MediaFileUpload
 
           creds_json = base64.b64decode(os.environ['GDRIVE_CREDENTIALS']).decode('utf-8')
           creds_dict = json.loads(creds_json)
           creds = service_account.Credentials.from_service_account_info(
             creds_dict,
-            scopes=['https://www.googleapis.com/auth/drive']
+            scopes=[
+              'https://www.googleapis.com/auth/documents',
+              'https://www.googleapis.com/auth/drive'
+            ]
           )
 
-          drive = build('drive', 'v3', credentials=creds)
-          folder_id = os.environ['GDRIVE_FOLDER_ID']
+          docs = build('docs', 'v1', credentials=creds)
+          doc_id = os.environ['GDRIVE_FILE_ID']
 
-          DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+          # Read the export file
+          with open('ob1-full-export.txt', 'r', encoding='utf-8') as f:
+            content = f.read()
 
-          # Check if file already exists
-          results = drive.files().list(
-            q=f"name='OB1 Full Export' and '{folder_id}' in parents and trashed=false",
-            fields="files(id, name)",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True
+          # Get current document to find end index
+          doc = docs.documents().get(documentId=doc_id).execute()
+          end_index = doc['body']['content'][-1]['endIndex'] - 1
+
+          requests = []
+
+          # Delete existing content if any
+          if end_index > 1:
+            requests.append({
+              'deleteContentRange': {
+                'range': {
+                  'startIndex': 1,
+                  'endIndex': end_index
+                }
+              }
+            })
+
+          # Insert new content
+          requests.append({
+            'insertText': {
+              'location': {'index': 1},
+              'text': content
+            }
+          })
+
+          docs.documents().batchUpdate(
+            documentId=doc_id,
+            body={'requests': requests}
           ).execute()
 
-          files = results.get('files', [])
-          media = MediaFileUpload('ob1-full-export.docx', mimetype=DOCX_MIME)
-
-          if files:
-            file_id = files[0]['id']
-            drive.files().update(
-              fileId=file_id,
-              media_body=media,
-              supportsAllDrives=True
-            ).execute()
-            print(f"Updated existing file: {file_id}")
-          else:
-            file_metadata = {
-              'name': 'OB1 Full Export',
-              'mimeType': DOCX_MIME,
-              'parents': [folder_id]
-            }
-            file = drive.files().create(
-              body=file_metadata,
-              media_body=media,
-              fields='id',
-              supportsAllDrives=True
-            ).execute()
-            print(f"Created new file: {file.get('id')}")
+          print(f"Successfully wrote {len(content)} characters to Google Doc")
           EOF
 
           python upload.py
         env:
           GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
-          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+          GDRIVE_FILE_ID: ${{ secrets.GDRIVE_FILE_ID }}
