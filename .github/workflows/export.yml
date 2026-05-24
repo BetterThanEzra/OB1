@@ -29,6 +29,7 @@ jobs:
 
       - name: Convert to docx
         run: |
+          sudo apt-get install -y pandoc -q
           pandoc ob1-full-export.txt -o ob1-full-export.docx
           echo "docx size: $(wc -c < ob1-full-export.docx) bytes"
 
