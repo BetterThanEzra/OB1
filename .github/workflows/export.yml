@@ -44,33 +44,16 @@ jobs:
           folder_id = os.environ['GDRIVE_FOLDER_ID']
           filename = 'ob1-full-export.txt'
 
-          # Check if file already exists in folder
-          results = drive.files().list(
-            q=f"name='{filename}' and '{folder_id}' in parents and trashed=false",
-            fields='files(id, name)'
-          ).execute()
-          existing = results.get('files', [])
-
           media = MediaFileUpload(filename, mimetype='text/plain', resumable=False)
+          metadata = {'name': filename, 'parents': [folder_id]}
 
-          if existing:
-            # Update existing file
-            file_id = existing[0]['id']
-            drive.files().update(
-              fileId=file_id,
-              media_body=media
-            ).execute()
-            print(f"Updated existing file: {file_id}")
-          else:
-            # Create new file in folder
-            metadata = {'name': filename, 'parents': [folder_id]}
-            drive.files().create(
-              body=metadata,
-              media_body=media,
-              fields='id'
-            ).execute()
-            print(f"Created new file in folder")
+          file = drive.files().create(
+            body=metadata,
+            media_body=media,
+            fields='id'
+          ).execute()
 
+          print(f"Created file: {file.get('id')}")
           print("Done.")
           EOF
           python upload.py
