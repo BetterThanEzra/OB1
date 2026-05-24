@@ -2,20 +2,20 @@ name: Export OB1 to Google Drive
 
 on:
   schedule:
-    - cron: '0 */6 * * *'  # every 6 hours, catches upstream updates
-  workflow_dispatch:         # manual trigger button in GitHub UI
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
   push:
-    branches: [main]         # also fires on your own changes
+    branches: [main]
 
 jobs:
   export:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Sync fork with upstream
+      - name: Clone upstream OB1
         run: |
           git clone https://github.com/NateBJones-Projects/OB1.git repo
-          
+
       - name: Generate export file
         run: |
           cd repo
@@ -25,12 +25,72 @@ jobs:
             | sort \
             | xargs awk 'FNR==1{print "\n\n========== FILE: " FILENAME " ==========\n"} {print}' \
             > ../ob1-full-export.txt
-          echo "Export complete. Size: $(wc -c < ../ob1-full-export.txt) bytes"
 
-      - name: Upload to Google Drive
-        uses: adityak74/google-drive-upload-git-action@main
-        with:
-          filename: ob1-full-export.txt
-          folderId: ${{ secrets.GDRIVE_FOLDER_ID }}
-          credentials: ${{ secrets.GDRIVE_CREDENTIALS }}
-          overwrite: true
+      - name: Upload as Google Doc
+        run: |
+          pip install google-auth google-auth-httplib2 google-api-python-client -q
+
+          cat << 'EOF' > upload.py
+          import os
+          import json
+          import base64
+          from google.oauth2 import service_account
+          from googleapiclient.discovery import build
+          from googleapiclient.http import MediaFileUpload
+
+          # Load credentials
+          creds_json = base64.b64decode(os.environ['GDRIVE_CREDENTIALS']).decode('utf-8')
+          creds_dict = json.loads(creds_json)
+          creds = service_account.Credentials.from_service_account_info(
+            creds_dict,
+            scopes=['https://www.googleapis.com/auth/drive']
+          )
+
+          drive = build('drive', 'v3', credentials=creds)
+          folder_id = os.environ['GDRIVE_FOLDER_ID']
+
+          # Check if doc already exists
+          results = drive.files().list(
+            q=f"name='OB1 Full Export' and '{folder_id}' in parents and trashed=false",
+            fields="files(id, name)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
+          ).execute()
+
+          files = results.get('files', [])
+
+          media = MediaFileUpload(
+            'ob1-full-export.txt',
+            mimetype='text/plain',
+            resumable=True
+          )
+
+          if files:
+            # Update existing doc
+            file_id = files[0]['id']
+            drive.files().update(
+              fileId=file_id,
+              media_body=media,
+              supportsAllDrives=True
+            ).execute()
+            print(f"Updated existing doc: {file_id}")
+          else:
+            # Create new Google Doc
+            file_metadata = {
+              'name': 'OB1 Full Export',
+              'mimeType': 'application/vnd.google-apps.document',
+              'parents': [folder_id]
+            }
+            file = drive.files().create(
+              body=file_metadata,
+              media_body=media,
+              fields='id',
+              supportsAllDrives=True
+            ).execute()
+            print(f"Created new doc: {file.get('id')}")
+          EOF
+
+          python upload.py
+        env:
+          GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
+          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
