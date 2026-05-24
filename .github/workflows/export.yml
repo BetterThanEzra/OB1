@@ -1,17 +1,21 @@
 name: Export OB1 to Google Drive
+
 on:
   schedule:
     - cron: '0 */6 * * *'
   workflow_dispatch:
   push:
     branches: [main]
+
 jobs:
   export:
     runs-on: ubuntu-latest
+
     steps:
       - name: Clone upstream OB1
         run: |
           git clone https://github.com/NateBJones-Projects/OB1.git repo
+
       - name: Generate export file
         run: |
           cd repo
@@ -22,41 +26,11 @@ jobs:
             | xargs awk 'FNR==1{print "\n\n========== FILE: " FILENAME " ==========\n"} {print}' \
             > ../ob1-full-export.txt
           echo "Export complete. Size: $(wc -c < ../ob1-full-export.txt) bytes"
-      - name: Upload to Google Drive folder
-        run: |
-          pip install google-auth google-auth-httplib2 google-api-python-client -q
-          cat << 'EOF' > upload.py
-          import os
-          import json
-          import base64
-          from google.oauth2 import service_account
-          from googleapiclient.discovery import build
-          from googleapiclient.http import MediaFileUpload
 
-          creds_json = base64.b64decode(os.environ['GDRIVE_CREDENTIALS']).decode('utf-8')
-          creds_dict = json.loads(creds_json)
-          creds = service_account.Credentials.from_service_account_info(
-            creds_dict,
-            scopes=['https://www.googleapis.com/auth/drive']
-          )
-          drive = build('drive', 'v3', credentials=creds)
-
-          folder_id = os.environ['GDRIVE_FOLDER_ID']
-          filename = 'ob1-full-export.txt'
-
-          media = MediaFileUpload(filename, mimetype='text/plain', resumable=False)
-          metadata = {'name': filename, 'parents': [folder_id]}
-
-          file = drive.files().create(
-            body=metadata,
-            media_body=media,
-            fields='id'
-          ).execute()
-
-          print(f"Created file: {file.get('id')}")
-          print("Done.")
-          EOF
-          python upload.py
-        env:
-          GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
-          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+      - name: Upload to Google Drive
+        uses: adityak74/google-drive-upload-git-action@main
+        with:
+          filename: ob1-full-export.txt
+          folderId: ${{ secrets.GDRIVE_FOLDER_ID }}
+          credentials: ${{ secrets.GDRIVE_CREDENTIALS }}
+          overwrite: true
