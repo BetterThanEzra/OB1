@@ -1,4 +1,28 @@
-- name: Write to Google Doc
+name: Export OB1 to Google Drive
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone upstream OB1
+        run: |
+          git clone https://github.com/NateBJones-Projects/OB1.git repo
+      - name: Generate export file
+        run: |
+          cd repo
+          find . -type f \( -name "*.md" -o -name "*.ts" -o -name "*.json" \) \
+            ! -path "*/node_modules/*" \
+            ! -path "*/.git/*" \
+            | sort \
+            | xargs awk 'FNR==1{print "\n\n========== FILE: " FILENAME " ==========\n"} {print}' \
+            > ../ob1-full-export.txt
+          echo "Export complete. Size: $(wc -c < ../ob1-full-export.txt) bytes"
+      - name: Write to Google Doc
         run: |
           pip install google-auth google-auth-httplib2 google-api-python-client -q
           cat << 'EOF' > upload.py
