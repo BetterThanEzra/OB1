@@ -27,7 +27,7 @@ jobs:
             > ../ob1-full-export.txt
           echo "Export complete. Size: $(wc -c < ../ob1-full-export.txt) bytes"
 
-      - name: Upload and convert to Google Doc
+      - name: Update Google Doc
         run: |
           pip install google-auth google-auth-httplib2 google-api-python-client -q
 
@@ -37,53 +37,4 @@ jobs:
           import base64
           from google.oauth2 import service_account
           from googleapiclient.discovery import build
-          from googleapiclient.http import MediaFileUpload
-
-          creds_json = base64.b64decode(os.environ['GDRIVE_CREDENTIALS']).decode('utf-8')
-          creds_dict = json.loads(creds_json)
-          creds = service_account.Credentials.from_service_account_info(
-            creds_dict,
-            scopes=['https://www.googleapis.com/auth/drive']
-          )
-
-          drive = build('drive', 'v3', credentials=creds)
-          folder_id = os.environ['GDRIVE_FOLDER_ID']
-
-          # Delete any existing versions
-          results = drive.files().list(
-            q=f"name='OB1 Full Export' and '{folder_id}' in parents and trashed=false",
-            fields="files(id, name)",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True
-          ).execute()
-
-          for f in results.get('files', []):
-            drive.files().delete(
-              fileId=f['id'],
-              supportsAllDrives=True
-            ).execute()
-            print(f"Deleted old file: {f['id']}")
-
-          # Upload plain text, convert to Google Doc in one step
-          file_metadata = {
-            'name': 'OB1 Full Export',
-            'mimeType': 'application/vnd.google-apps.document',
-            'parents': [folder_id]
-          }
-          media = MediaFileUpload(
-            'ob1-full-export.txt',
-            mimetype='text/plain'
-          )
-          file = drive.files().create(
-            body=file_metadata,
-            media_body=media,
-            fields='id',
-            supportsAllDrives=True
-          ).execute()
-          print(f"Created Google Doc: {file.get('id')}")
-          EOF
-
-          python upload.py
-        env:
-          GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
-          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+          from googleapiclient.http import MediaFileUploa
