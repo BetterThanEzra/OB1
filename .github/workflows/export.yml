@@ -27,7 +27,12 @@ jobs:
             > ../ob1-full-export.txt
           echo "Export complete. Size: $(wc -c < ../ob1-full-export.txt) bytes"
 
-      - name: Update Google Doc
+      - name: Convert to docx
+        run: |
+          pandoc ob1-full-export.txt -o ob1-full-export.docx
+          echo "docx size: $(wc -c < ob1-full-export.docx) bytes"
+
+      - name: Upload to Google Drive
         run: |
           pip install google-auth google-auth-httplib2 google-api-python-client -q
 
@@ -47,23 +52,45 @@ jobs:
           )
 
           drive = build('drive', 'v3', credentials=creds)
+          folder_id = os.environ['GDRIVE_FOLDER_ID']
 
-          media = MediaFileUpload(
-            'ob1-full-export.txt',
-            mimetype='text/plain'
-          )
+          DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
-          file = drive.files().update(
-            fileId=os.environ['GDRIVE_FILE_ID'],
-            media_body=media,
-            media_mime_type='text/plain',
-            supportsAllDrives=True
+          # Check if file already exists
+          results = drive.files().list(
+            q=f"name='OB1 Full Export' and '{folder_id}' in parents and trashed=false",
+            fields="files(id, name)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
           ).execute()
 
-          print(f"Updated Google Doc: {file.get('id')}")
+          files = results.get('files', [])
+          media = MediaFileUpload('ob1-full-export.docx', mimetype=DOCX_MIME)
+
+          if files:
+            file_id = files[0]['id']
+            drive.files().update(
+              fileId=file_id,
+              media_body=media,
+              supportsAllDrives=True
+            ).execute()
+            print(f"Updated existing file: {file_id}")
+          else:
+            file_metadata = {
+              'name': 'OB1 Full Export',
+              'mimeType': DOCX_MIME,
+              'parents': [folder_id]
+            }
+            file = drive.files().create(
+              body=file_metadata,
+              media_body=media,
+              fields='id',
+              supportsAllDrives=True
+            ).execute()
+            print(f"Created new file: {file.get('id')}")
           EOF
 
           python upload.py
         env:
           GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
-          GDRIVE_FILE_ID: ${{ secrets.GDRIVE_FILE_ID }}
+          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
