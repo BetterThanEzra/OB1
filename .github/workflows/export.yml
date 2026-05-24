@@ -22,7 +22,7 @@ jobs:
             | xargs awk 'FNR==1{print "\n\n========== FILE: " FILENAME " ==========\n"} {print}' \
             > ../ob1-full-export.txt
           echo "Export complete. Size: $(wc -c < ../ob1-full-export.txt) bytes"
-      - name: Write to Google Doc
+      - name: Upload to Google Drive folder
         run: |
           pip install google-auth google-auth-httplib2 google-api-python-client -q
           cat << 'EOF' > upload.py
@@ -31,64 +31,49 @@ jobs:
           import base64
           from google.oauth2 import service_account
           from googleapiclient.discovery import build
+          from googleapiclient.http import MediaFileUpload
 
           creds_json = base64.b64decode(os.environ['GDRIVE_CREDENTIALS']).decode('utf-8')
           creds_dict = json.loads(creds_json)
           creds = service_account.Credentials.from_service_account_info(
             creds_dict,
-            scopes=[
-              'https://www.googleapis.com/auth/documents',
-              'https://www.googleapis.com/auth/drive'
-            ]
+            scopes=['https://www.googleapis.com/auth/drive']
           )
-          docs = build('docs', 'v1', credentials=creds)
-          doc_id = os.environ['GDRIVE_FILE_ID']
+          drive = build('drive', 'v3', credentials=creds)
 
-          with open('ob1-full-export.txt', 'r', encoding='utf-8') as f:
-            content = f.read()
+          folder_id = os.environ['GDRIVE_FOLDER_ID']
+          filename = 'ob1-full-export.txt'
 
-          print(f"Content size: {len(content)} characters")
+          # Check if file already exists in folder
+          results = drive.files().list(
+            q=f"name='{filename}' and '{folder_id}' in parents and trashed=false",
+            fields='files(id, name)'
+          ).execute()
+          existing = results.get('files', [])
 
-          # Get current end index
-          doc = docs.documents().get(documentId=doc_id).execute()
-          end_index = doc['body']['content'][-1]['endIndex']
+          media = MediaFileUpload(filename, mimetype='text/plain', resumable=False)
 
-          # Step 1: delete existing content
-          if end_index > 2:
-            docs.documents().batchUpdate(
-              documentId=doc_id,
-              body={'requests': [{
-                'deleteContentRange': {
-                  'range': {
-                    'startIndex': 1,
-                    'endIndex': end_index - 1
-                  }
-                }
-              }]}
+          if existing:
+            # Update existing file
+            file_id = existing[0]['id']
+            drive.files().update(
+              fileId=file_id,
+              media_body=media
             ).execute()
-            print("Deleted existing content")
-
-          # Step 2: insert in chunks of 500KB
-          CHUNK_SIZE = 500000
-          chunks = [content[i:i+CHUNK_SIZE] for i in range(0, len(content), CHUNK_SIZE)]
-          print(f"Inserting {len(chunks)} chunks")
-
-          # Insert in reverse order so indexes stay correct
-          for i, chunk in enumerate(reversed(chunks)):
-            docs.documents().batchUpdate(
-              documentId=doc_id,
-              body={'requests': [{
-                'insertText': {
-                  'location': {'index': 1},
-                  'text': chunk
-                }
-              }]}
+            print(f"Updated existing file: {file_id}")
+          else:
+            # Create new file in folder
+            metadata = {'name': filename, 'parents': [folder_id]}
+            drive.files().create(
+              body=metadata,
+              media_body=media,
+              fields='id'
             ).execute()
-            print(f"Inserted chunk {i+1}/{len(chunks)}")
+            print(f"Created new file in folder")
 
-          print(f"Done. Wrote {len(content)} characters in {len(chunks)} chunks")
+          print("Done.")
           EOF
           python upload.py
         env:
           GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
-          GDRIVE_FILE_ID: ${{ secrets.GDRIVE_FILE_ID }}
+          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
