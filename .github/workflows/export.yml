@@ -49,6 +49,7 @@ jobs:
           drive = build('drive', 'v3', credentials=creds)
           folder_id = os.environ['GDRIVE_FOLDER_ID']
 
+          # Check if file already exists
           results = drive.files().list(
             q=f"name='OB1 Full Export' and '{folder_id}' in parents and trashed=false",
             fields="files(id, name)",
@@ -64,17 +65,18 @@ jobs:
           )
 
           if files:
+            # Update existing file
             file_id = files[0]['id']
             drive.files().update(
               fileId=file_id,
               media_body=media,
               supportsAllDrives=True
             ).execute()
-            print(f"Updated existing doc: {file_id}")
+            print(f"Updated existing file: {file_id}")
           else:
+            # Upload as plain text first
             file_metadata = {
               'name': 'OB1 Full Export',
-              'mimeType': 'application/vnd.google-apps.document',
               'parents': [folder_id]
             }
             file = drive.files().create(
@@ -83,7 +85,28 @@ jobs:
               fields='id',
               supportsAllDrives=True
             ).execute()
-            print(f"Created new doc: {file.get('id')}")
+            file_id = file.get('id')
+            print(f"Created file: {file_id}")
+
+            # Copy it as a native Google Doc
+            doc_metadata = {
+              'name': 'OB1 Full Export',
+              'mimeType': 'application/vnd.google-apps.document',
+              'parents': [folder_id]
+            }
+            doc = drive.files().copy(
+              fileId=file_id,
+              body=doc_metadata,
+              supportsAllDrives=True
+            ).execute()
+            print(f"Converted to Google Doc: {doc.get('id')}")
+
+            # Delete the plain text original
+            drive.files().delete(
+              fileId=file_id,
+              supportsAllDrives=True
+            ).execute()
+            print("Deleted plain text original")
           EOF
 
           python upload.py
