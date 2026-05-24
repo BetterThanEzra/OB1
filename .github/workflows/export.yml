@@ -27,7 +27,7 @@ jobs:
             > ../ob1-full-export.txt
           echo "Export complete. Size: $(wc -c < ../ob1-full-export.txt) bytes"
 
-      - name: Upload as Google Doc
+      - name: Upload and convert to Google Doc
         run: |
           pip install google-auth google-auth-httplib2 google-api-python-client -q
 
@@ -49,7 +49,7 @@ jobs:
           drive = build('drive', 'v3', credentials=creds)
           folder_id = os.environ['GDRIVE_FOLDER_ID']
 
-          # Check if file already exists
+          # Delete any existing versions
           results = drive.files().list(
             q=f"name='OB1 Full Export' and '{folder_id}' in parents and trashed=false",
             fields="files(id, name)",
@@ -57,56 +57,30 @@ jobs:
             includeItemsFromAllDrives=True
           ).execute()
 
-          files = results.get('files', [])
+          for f in results.get('files', []):
+            drive.files().delete(
+              fileId=f['id'],
+              supportsAllDrives=True
+            ).execute()
+            print(f"Deleted old file: {f['id']}")
 
+          # Upload plain text, convert to Google Doc in one step
+          file_metadata = {
+            'name': 'OB1 Full Export',
+            'mimeType': 'application/vnd.google-apps.document',
+            'parents': [folder_id]
+          }
           media = MediaFileUpload(
             'ob1-full-export.txt',
             mimetype='text/plain'
           )
-
-          if files:
-            # Update existing file
-            file_id = files[0]['id']
-            drive.files().update(
-              fileId=file_id,
-              media_body=media,
-              supportsAllDrives=True
-            ).execute()
-            print(f"Updated existing file: {file_id}")
-          else:
-            # Upload as plain text first
-            file_metadata = {
-              'name': 'OB1 Full Export',
-              'parents': [folder_id]
-            }
-            file = drive.files().create(
-              body=file_metadata,
-              media_body=media,
-              fields='id',
-              supportsAllDrives=True
-            ).execute()
-            file_id = file.get('id')
-            print(f"Created file: {file_id}")
-
-            # Copy it as a native Google Doc
-            doc_metadata = {
-              'name': 'OB1 Full Export',
-              'mimeType': 'application/vnd.google-apps.document',
-              'parents': [folder_id]
-            }
-            doc = drive.files().copy(
-              fileId=file_id,
-              body=doc_metadata,
-              supportsAllDrives=True
-            ).execute()
-            print(f"Converted to Google Doc: {doc.get('id')}")
-
-            # Delete the plain text original
-            drive.files().delete(
-              fileId=file_id,
-              supportsAllDrives=True
-            ).execute()
-            print("Deleted plain text original")
+          file = drive.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id',
+            supportsAllDrives=True
+          ).execute()
+          print(f"Created Google Doc: {file.get('id')}")
           EOF
 
           python upload.py
