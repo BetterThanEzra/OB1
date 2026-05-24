@@ -37,4 +37,33 @@ jobs:
           import base64
           from google.oauth2 import service_account
           from googleapiclient.discovery import build
-          from googleapiclient.http import MediaFileUploa
+          from googleapiclient.http import MediaFileUpload
+
+          creds_json = base64.b64decode(os.environ['GDRIVE_CREDENTIALS']).decode('utf-8')
+          creds_dict = json.loads(creds_json)
+          creds = service_account.Credentials.from_service_account_info(
+            creds_dict,
+            scopes=['https://www.googleapis.com/auth/drive']
+          )
+
+          drive = build('drive', 'v3', credentials=creds)
+
+          media = MediaFileUpload(
+            'ob1-full-export.txt',
+            mimetype='text/plain'
+          )
+
+          file = drive.files().update(
+            fileId=os.environ['GDRIVE_FILE_ID'],
+            media_body=media,
+            media_mime_type='text/plain',
+            supportsAllDrives=True
+          ).execute()
+
+          print(f"Updated Google Doc: {file.get('id')}")
+          EOF
+
+          python upload.py
+        env:
+          GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
+          GDRIVE_FILE_ID: ${{ secrets.GDRIVE_FILE_ID }}
