@@ -47,11 +47,13 @@ jobs:
           with open('ob1-full-export.txt', 'r', encoding='utf-8') as f:
             content = f.read()
 
+          print(f"Content size: {len(content)} characters")
+
           # Get current end index
           doc = docs.documents().get(documentId=doc_id).execute()
           end_index = doc['body']['content'][-1]['endIndex']
 
-          # Step 1: delete existing content (only if there's something to delete)
+          # Step 1: delete existing content
           if end_index > 2:
             docs.documents().batchUpdate(
               documentId=doc_id,
@@ -64,19 +66,27 @@ jobs:
                 }
               }]}
             ).execute()
+            print("Deleted existing content")
 
-          # Step 2: insert new content
-          docs.documents().batchUpdate(
-            documentId=doc_id,
-            body={'requests': [{
-              'insertText': {
-                'location': {'index': 1},
-                'text': content
-              }
-            }]}
-          ).execute()
+          # Step 2: insert in chunks of 500KB
+          CHUNK_SIZE = 500000
+          chunks = [content[i:i+CHUNK_SIZE] for i in range(0, len(content), CHUNK_SIZE)]
+          print(f"Inserting {len(chunks)} chunks")
 
-          print(f"Successfully wrote {len(content)} characters to Google Doc")
+          # Insert in reverse order so indexes stay correct
+          for i, chunk in enumerate(reversed(chunks)):
+            docs.documents().batchUpdate(
+              documentId=doc_id,
+              body={'requests': [{
+                'insertText': {
+                  'location': {'index': 1},
+                  'text': chunk
+                }
+              }]}
+            ).execute()
+            print(f"Inserted chunk {i+1}/{len(chunks)}")
+
+          print(f"Done. Wrote {len(content)} characters in {len(chunks)} chunks")
           EOF
           python upload.py
         env:
