@@ -1,0 +1,90 @@
+name: Export OB1 to Google Doc
+
+on:
+  workflow_dispatch:
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clone upstream OB1
+        run: |
+          git clone https://github.com/NateBJones-Projects/OB1.git repo
+
+      - name: Generate export file
+        run: |
+          cd repo
+          find . -type f \( -name "*.md" -o -name "*.ts" -o -name "*.json" \) \
+            ! -path "*/node_modules/*" \
+            ! -path "*/.git/*" \
+            | sort \
+            | xargs awk 'FNR==1{print "\n\n========== FILE: " FILENAME " ==========\n"} {print}' \
+            > ../ob1-full-export.txt
+          echo "Export size: $(wc -c < ../ob1-full-export.txt) bytes"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Google API client
+        run: pip install google-api-python-client google-auth
+
+      - name: Upload as Google Doc
+        env:
+          GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
+          GDRIVE_PERSONAL_FOLDER_ID: ${{ secrets.GDRIVE_PERSONAL_FOLDER_ID }}
+          GDRIVE_SHARED_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+        run: |
+          python3 << 'EOF'
+          import os, json, base64
+          from googleapiclient.discovery import build
+          from googleapiclient.http import MediaFileUpload
+          from google.oauth2 import service_account
+
+          # Auth
+          creds_json = base64.b64decode(os.environ["GDRIVE_CREDENTIALS"])
+          creds_info = json.loads(creds_json)
+          creds = service_account.Credentials.from_service_account_info(
+              creds_info,
+              scopes=["https://www.googleapis.com/auth/drive"]
+          )
+          drive = build("drive", "v3", credentials=creds)
+
+          personal_folder = os.environ["GDRIVE_PERSONAL_FOLDER_ID"]
+          shared_folder = os.environ["GDRIVE_SHARED_FOLDER_ID"]
+
+          # Step 1: Upload as Google Doc to personal Drive (conversion works here)
+          media = MediaFileUpload("ob1-full-export.txt", mimetype="text/plain")
+          file_meta = {
+              "name": "OB1 Full Export",
+              "mimeType": "application/vnd.google-apps.document",
+              "parents": [personal_folder]
+          }
+          result = drive.files().create(
+              body=file_meta,
+              media_body=media,
+              fields="id",
+              supportsAllDrives=True
+          ).execute()
+          file_id = result["id"]
+          print(f"Created Google Doc in personal Drive: {file_id}")
+
+          # Step 2: Move to Shared Drive
+          file = drive.files().get(
+              fileId=file_id,
+              fields="parents",
+              supportsAllDrives=True
+          ).execute()
+          previous_parents = ",".join(file["parents"])
+          drive.files().update(
+              fileId=file_id,
+              addParents=shared_folder,
+              removeParents=previous_parents,
+              supportsAllDrives=True,
+              fields="id, parents"
+          ).execute()
+          print(f"Moved to Shared Drive folder: {shared_folder}")
+          print(f"Final file ID: {file_id}")
+          EOF
