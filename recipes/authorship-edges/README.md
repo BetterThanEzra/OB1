@@ -60,6 +60,13 @@ Put these in `.env.local` at your project root (the scripts also read `process.e
 
 ## Setup
 
+Steps at a glance:
+
+1. Copy this recipe folder into your OB1 checkout.
+2. Install dependencies (none required — it runs on the standard library).
+3. Run the classifier self-test to confirm it works.
+4. Wire the classifier into a capture path, then backfill existing thoughts.
+
 ### 1. Copy this recipe folder
 
 ```bash
