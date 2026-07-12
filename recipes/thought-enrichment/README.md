@@ -19,7 +19,7 @@ Retroactively classify and enrich your existing thoughts with structured metadat
 
    ```
    SUPABASE_URL=https://your-project-ref.supabase.co
-   SUPABASE_SERVICE_ROLE_KEY=eyJ...
+   SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
    OPENROUTER_API_KEY=sk-or-v1-...
    ```
 
