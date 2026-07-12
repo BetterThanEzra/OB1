@@ -36,6 +36,11 @@ outdated or wrong, prefer updating or tagging it `superseded` over deleting
 1. **Resolve the id first.** `update_thought` takes a UUID, not a description.
    Use `search_thoughts` / `list_thoughts` to find the target and confirm it is
    the right one. Never guess a UUID.
+   - **Inspect before editing.** Before you overwrite anything, read the target's
+     full content with `get_thought` (or the connector's `fetch` tool), and use
+     `related_thoughts` to see what it connects to — so you don't clobber context
+     other thoughts depend on. Tool names may carry a connector prefix; use
+     whatever the environment exposes.
 2. **Pick the mode:**
    - Tag / re-classify only → pass `metadata_patch` (shallow-merges keys; leaves
      content and unmentioned keys alone; **no re-embedding**).

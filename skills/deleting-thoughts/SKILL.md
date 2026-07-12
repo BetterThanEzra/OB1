@@ -39,6 +39,12 @@ If the thought is merely outdated, wrong, or superseded, **update it or tag it**
    takes a UUID; never delete an id you typed from memory.
 2. **Show the target and confirm.** Surface the thought's content to the user
    and get explicit confirmation that this specific thought should be removed.
+   - **Check for derivatives first.** Before deleting, run `find_derivatives`
+     (and/or `related_thoughts`) on the thought. If other thoughts were derived
+     from it, deleting orphans their provenance chain — those derivatives lose
+     the source they point back to. Prefer deprecating over deleting in that
+     case. Tool names may carry a connector prefix; use whatever the environment
+     exposes.
 3. **Delete only after confirmation.** Call `delete_thought(id)`. It pre-checks
    existence (a clean "not found" if already gone) and returns the prior content
    length as a receipt. Report that receipt to the user.
